@@ -1,0 +1,43 @@
+### CREATE MASTERS TASKS
+- name: Creating instance {{ ':' }} {{ openshift_routers_lb }}
+  gce:
+    instance_names: "{{ openshift_routers_lb }}"
+    state: "present"
+    machine_type: "{{ lb_machine_type }}"
+    image: "{{ image }}"
+    zone: "{{ zone }}"
+    network: "{{ network_name }}"
+    subnetwork: "{{ subnetwork_name }}"
+    tags: ["enable-ssh","openshift-master"]
+    disk_auto_delete: True
+    project_id: "{{ gce_project_id }}"
+    credentials_file: "{{ gce_credentials_file }}"
+    service_account_email: "{{ gce_service_account_email }}"
+  ignore_errors: True
+  register: routers_lb_instance_creation
+  tags:
+     - create_router_lb
+
+- debug: var=routers_lb_instance_creation
+
+- name: Getting OpenShift's Router LB Public IP{{ ':' }} {{ routers_lb_instance_creation.instance_data[0].public_ip }}
+  set_fact: openshift_routers_lb_public_ip={{ routers_lb_instance_creation.instance_data[0].public_ip }}
+
+- name: Getting OpenShift's Router LB Private IP{{ ':' }} {{ routers_lb_instance_creation.instance_data[0].private_ip }}
+  set_fact: openshift_routers_lb_private_ip={{ routers_lb_instance_creation.instance_data[0].private_ip }}
+  tags:
+     - create_router_lb
+
+- name: Wait for OpenShift's Master instance to be up{{ ':' }} {{ openshift_routers_lb_public_ip }}
+  wait_for: host="{{ openshift_routers_lb_public_ip }}" port={{ ssh_default_image_port }} delay={{ instance_validate_delay }}  state=started
+  tags:
+     - create_router_lb
+
+- name: Adding OpenShift's Master into group{{ ':' }} openshift_hosts
+  add_host: groups=openshift_router_lb_group hostname={{ openshift_routers_lb_public_ip }}
+            private_ip={{ openshift_routers_lb_private_ip}} instance_name={{ openshift_routers_lb }}
+            public_ip={{ openshift_routers_lb_public_ip }}
+            ansible_user={{ ssh_default_image_user }} ansible_password={{ ssh_default_image_password }}
+            ansible_port={{ ssh_default_image_port }}
+  tags:
+     - create_router_lb
